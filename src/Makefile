@@ -1,2 +1,2 @@
 all:
-	cc main.c -o main
+	cc *.c *.h -o main
