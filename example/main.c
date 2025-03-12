@@ -15,12 +15,14 @@ int main(int argc, char* argv[])
     int *z = malloc(sizeof(int));
     *z = 123456789;
 
+    int sleepNum = 8;
+
     while (1) {
         printf("PID: %d; value x is %d, value of y is: %d, value of z is: %d\n", getpid(), *x, *y, *z);
-        sleep(10);
+        sleep(sleepNum);
         *x = ++(*x);
-        sleep(10);
         *z = ++(*z);
+        sleepNum += 2;
     }
 
     return 0;
