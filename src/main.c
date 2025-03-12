@@ -26,38 +26,18 @@ void printAllNodes(Node *list)
 {
     Node *current = list;
 
-    printf("zero\n");
     int i = 1;
     while (current != NULL) {
-        printf("#%d address: %ld with value %ld\n", i, current->address, current->value);
+        if (current->value == -1 || current->address == 0) {
+        }
+        else {
+            printf("#%d address: %ld with value %ld\n", i, current->address, current->value);
+        }
         current = current->next;
         i++;
     }
 }
 
-void printNonZeroAddressNodes(Node *list)
-{
-    printf("non zero\n");
-    int i = 1;
-    while (list != NULL) {
-        if (list->address != 0)
-        {
-            printf("#%d address: %ld\n", i, list->address);
-        }
-        list = list->next;
-        i++;
-    }
-}
-
-void removeZeroAddressNodes(Node *head) {
-
-    while (head->address == 0)
-    {
-        head = head->next;
-    }
-
-    //TODO: finish the method
-}
 
 void filterChangedValues(int pid, long int value, Node *list)
 {
@@ -80,22 +60,27 @@ void filterChangedValues(int pid, long int value, Node *list)
     sleep(2);
 
     Node *current = list;
+    Node *prev = NULL;
+
     while (current != NULL)
     {
         if (current->address != 0)
         {
             long data = ptrace(PTRACE_PEEKDATA, pid, current->address, NULL);
             printf("data of address: %ld with value: %ld\n", current->address, data);
-            if (data == value) {
-                //printf("yurr");
-            }
-            else {
-                //Too lazy to delete the node, just set to null xd
-                current->address = 0;
-                printf("setting to 0\n");
+            current->value = data;
+
+            if (data != value)
+            {
+                current->value = -1;
             }
         }
+        else
+        {
 
+        }
+
+        prev = current;
         current = current->next;
     }
 
@@ -134,12 +119,11 @@ int search(int pid, long int start, long int end, long int value, Node *list)
         data = ptrace(PTRACE_PEEKDATA, pid, (void*)addressPtr, NULL);
         //printf("Current address: %ld\t", AddressPtr);
 
-        printf("AA %ld\n", data);
+        //printf("AA %ld\n", data);
 
         if (data == value) {
-            printf("XX %ld\n", data);
+            //printf("XX %ld\n", data);
             found++;
-            //printf("ayooo\n");
 
             currentNode->address = addressPtr;
             currentNode->value = data;
@@ -150,7 +134,6 @@ int search(int pid, long int start, long int end, long int value, Node *list)
         addressPtr += sizeof(long);
     }
 
-    printf("BB %ld\n", data);
     ptrace(PTRACE_DETACH, pid, NULL, NULL);
 
     if (found == 0) {
@@ -184,8 +167,8 @@ int main(int argc, char* argv[])
 
     if (!filePtr)
     {
-            printf("FilePtr is null!\n");
-            return 0;
+        printf("FilePtr is null!\n");
+        return 0;
     }
 
     char buffer[512];
@@ -211,7 +194,7 @@ int main(int argc, char* argv[])
     char *end = strtok(NULL, "-");
     printf("Ending address: \t%s\n", end);
 
-    long int startNum = strtol(start, NULL, 16);
+    long int startNum = 0x0; //strtol(start, NULL, 16);
     long int endNum = strtol(end, NULL, 16);
 
     Node *list = malloc(sizeof(Node));
@@ -227,14 +210,22 @@ int main(int argc, char* argv[])
 
     printAllNodes(list);
 
+    printf("All address in the heap with the value %d have been found.\n", value);
+
     char input[32];
     while (1) {
-        printf("reload? (y/n) \n");
+        printf("Did the value change? (y/n) \n");
         scanf("%1s", input);
         while (getchar() != '\n');
 
-        if (input[0] == 'y')
-        {
+        if (input[0] == 'y') {
+            printf("Type the value to search for\n");
+
+            char val[32];
+            scanf("%31s", val);
+            while (getchar() != '\n');
+            value = strtol(val, NULL, 10);
+
             filterChangedValues(pidInt, value, list);
             printAllNodes(list);
         }
@@ -248,7 +239,7 @@ int main(int argc, char* argv[])
             scanf("%4s", input);
             while (getchar() != '\n');
 
-            int num = strtol(input, NULL, 16);
+            int num = strtol(input, NULL, 10);
             num--; //Because user gets index start at #1
 
             printf("Enter the value: \n");
@@ -257,32 +248,21 @@ int main(int argc, char* argv[])
 
             value = strtol(input, NULL, 10);
 
+            printf("Value entered: %d\n", value);
+
             Node *cur = list;
+
             while (num) {
+                printf("Num is: %d with cur addrress: %ld\n", num, cur->address);
                 cur = cur->next;
                 num--;
             }
 
+            printf("Num is: %d with cur addrress: %ld\n", num, cur->address);
+
             sleep(1);
             changeValue(pidInt, cur->address, value);
             cur->value = value;
-            continue;
-        }
-
-        printf("Did the value change? (y/n) \n");
-        scanf("%1s", input);
-        while (getchar() != '\n');
-
-        if (input[0] == 'y') {
-            printf("Type the value to search for\n");
-
-            char val[32];
-            scanf("%7s", val);
-            while (getchar() != '\n');
-            value = strtol(val, NULL, 10);
-
-            filterChangedValues(pidInt, value, list);
-            printAllNodes(list);
         }
     }
 
