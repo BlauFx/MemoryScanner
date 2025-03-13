@@ -12,3 +12,5 @@ typedef struct BufLine {
     long int end;
     struct BufLine *next;
 } BufLine;
+
+int search(int pid, long int start, long int end, long int value, Node *list);

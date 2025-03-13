@@ -121,101 +121,8 @@ void filterChangedValues(int pid, long int value, Node *list)
     ptrace(PTRACE_DETACH, pid, NULL, NULL);
 }
 
-void attachORdetach(int pid, int attach) {
-
-    if (kill(pid, 0) != 0) {
-        kill(pid, SIGCONT);
-        sleep(10);
-    }
-
-    if (attach) {
-        if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) == 0)
-        {
-            printf("PTRACE_ATTACH success\n");
-        }
-        else
-        {
-            printf("ERROR: ATTACHING!\n"); //TODO: Check internally for root permissions?
-        }
-    }
-    else {
-        if (ptrace(PTRACE_DETACH, pid, NULL, NULL) == 0)
-        {
-            printf("PTRACE_DETACH success\n");
-        }
-        else
-        {
-            printf("ERROR: DETACHING!\n"); //TODO: Check internally for root permissions?
-        }
-    }
-
-}
-
-int search(int pid, long int start, long int end, long int value, Node *list)
-{
-    long data;
-    long int addressPtr = start;
-
-    Node *currentNode = list;
-
-    while (currentNode->next != NULL) {
-        currentNode = currentNode->next;
-    }
-
-    while (addressPtr <= end)
-    {
-        data = ptrace(PTRACE_PEEKDATA, pid, (void*)addressPtr, NULL);
-
-        if (data == value) {
-
-            // printf("XX %ld\n", data);
-
-            currentNode->address = addressPtr;
-            currentNode->value = data;
-            currentNode->next = malloc(sizeof(Node));
-            currentNode = currentNode->next;
-        }
-
-        unsigned char *bytes = (unsigned char*)&data; // Cast to byte array
-        for (int i = 0; i < sizeof(long); i++) {
-            if  (bytes[i] == value)
-            {
-                printf("x YY %d %ld %ld\n", i, addressPtr, value);
-                currentNode->address = addressPtr;
-                currentNode->value = bytes[i];
-
-                currentNode->isByte = 1;
-                currentNode->bytePos = i;
-
-                currentNode->next = malloc(sizeof(Node));
-                currentNode = currentNode->next;
-            }
-        }
-
-        addressPtr += sizeof(long);
-    }
-
-    if (currentNode->next == NULL) {
-        return -1;
-    }
-
-    return 0;
-}
-
 int main(int argc, char* argv[])
 {
-    if (argc == 1) {
-        printf("Enter as an argument (for example) the .data section virtual address\n");
-        printf("To ge the VMA: \"objdump -h /your/binaryfile | grep \" .data \" | awk '{print $4}\n");
-        exit(0);
-    }
-
-    char *vma = argv[1];
-    long int VMAInt = strtol(vma, NULL, 16);
-
-    printf("VMA: %ld \n", VMAInt);
-
-
     printf("Type the pid of the program\n");
 
     char pid[8];
@@ -265,17 +172,13 @@ int main(int argc, char* argv[])
                 long int startInt = strtol(start, NULL, 16);
                 long int endInt = strtol(end, NULL, 16);
 
-                if (startInt >= VMAInt)
-                {
-                    printf("startINT: %ld\n", startInt);
-                    strcpy(ptr->buffer, addr);
-                    ptr->start = startInt;
-                    ptr->end = endInt;
+                strcpy(ptr->buffer, addr);
+                ptr->start = startInt;
+                ptr->end = endInt;
 
-                    ptr->next = malloc(sizeof(BufLine));
-                    ptr = ptr->next;
-                    i++;
-                }
+                ptr->next = malloc(sizeof(BufLine));
+                ptr = ptr->next;
+                i++;
             }
 
             if (strstr(buffer, "[heap]")) {
@@ -289,28 +192,11 @@ int main(int argc, char* argv[])
     Node *list = malloc(sizeof(Node));
     ptr = rwPages;
 
-    while (ptr->next != NULL)
-    {
-        printf("a Starting: \t%ld\n", ptr->start);
-        printf("a Ending: \t%ld\n", ptr->end);
-
-        if (ptr->next->next->next->next == NULL) {
-            ptr->next->next->next = NULL;
-            break;
-        }
-
-        ptr = ptr->next;
-    }
-
-    // return 0;
-
-    attachORdetach(pidInt, 1);
-
     printf("OKAY: going to start searching\n");
 
     while (i && ptr->next != NULL) {
         long int startNum = ptr->start;
-        long int endNum = 0x14147f842; //ptr->end;
+        long int endNum = ptr->end;
 
         printf("Starting: \t%ld\n", startNum);
         printf("Ending: \t%ld\n", endNum);
@@ -325,13 +211,10 @@ int main(int argc, char* argv[])
             printf("Value %d has been found!\n", value);
         }
 
-        break;
-
         i--;
         ptr = ptr->next;
     }
 
-    attachORdetach(pidInt, 0);
     printAllNodes(list);
 
     printf("All address in the heap with the value %d have been found.\n", value);
