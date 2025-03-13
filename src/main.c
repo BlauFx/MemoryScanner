@@ -1,24 +1,27 @@
-#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/ptrace.h>
 #include "helper.h"
+#include <fcntl.h>
 
-void changeValue(int pid, long int address, long int value)
-{
-    printf("Changing address: %ld with value %ld\n", address, value);
+void changeValue(int pid, long int addr, long int value, int size) {
 
-    ptrace(PTRACE_ATTACH, pid, NULL, NULL);
-    sleep(2);
+    char mem_path[64];
+    snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
+    int fd = open(mem_path, O_RDWR);
+    if (fd == -1) {
+        printf("Failed to open /proc/%d/mem", pid);
+        return;
+    }
 
-    ptrace(PTRACE_POKEDATA, pid, address, value);
-    sleep(2);
+    printf("Changing addr %ld with value %ld and size: %d\n", addr, value, size);
 
-    ptrace(PTRACE_DETACH, pid, NULL, NULL);
-    sleep(2);
-    //kill(pid, SIGCONT);
+    lseek(fd, addr, SEEK_SET);
+    write(fd, &value, size);
+
+    close(fd);
 }
 
 void printAllNodes(Node *list)
@@ -31,19 +34,23 @@ void printAllNodes(Node *list)
         }
         else
         {
-            if (current->isByte == 1)
-            {
-                unsigned char *bytes = (unsigned char*)&current->value; // Cast to byte array
-                for (int j = 0; j < sizeof(long); j++) {
-                    if (bytes[j] != 0) {
-                        // printf("#%d data of address byte %i: %ld with value: %d\n", i, j, current->address, bytes[j]);
-                    }
-                }
+            char* type = "";
+
+            switch (current->type) {
+                case NODE_TYPE_BYTE:
+                    type = "byte";
+                    break;
+
+                case NODE_TYPE_INT:
+                    type = "int";
+                    break;
+
+                case NODE_TYPE_LONG:
+                    type = "long";
+                    break;
             }
-            else
-            {
-                printf("#%d address: %ld with value (long): %ld\n", i, current->address, current->value);
-            }
+
+            printf("#%d address (%s): \t%ld with value: \t%ld\n", i, type, current->address, current->value);
         }
 
         current = current->next;
@@ -53,72 +60,50 @@ void printAllNodes(Node *list)
 
 void filterChangedValues(int pid, long int value, Node *list)
 {
-    printf("pid: %d\n", pid);
-
-    if (kill(pid, 0) != 0) {
-        kill(pid, SIGCONT);
-        sleep(10);
-    }
-
-    if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) == 0)
-    {
-        printf("PTRACE_ATTACH 2 success\n");
-    }
-    else
-    {
-        printf("ERROR: ATTACHING 2!\n"); //TODO: Check internally for root permissions?
-    }
-
-    sleep(2);
-
     Node *current = list;
-    Node *prev = NULL;
+
+    char mem_path[64];
+    snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
+    int fd = open(mem_path, O_RDONLY);
+    if (fd == -1) {
+        printf("Failed to open /proc/%d/mem", pid);
+        return;
+    }
 
     while (current != NULL)
     {
         if (current->address != 0)
         {
-            long data = ptrace(PTRACE_PEEKDATA, pid, current->address, NULL);
-
-            if (current->isByte > 0)
+            if (current->type == NODE_TYPE_BYTE)
             {
-                int tmp = -1;
+                int ret = read_byte(fd, current->address);
 
-                unsigned char *bytes = (unsigned char*)&data; // Cast to byte array
-                for (int i = 0; i < sizeof(long); i++) {
-                    // printf("data of address bytes: %ld with value: %d\n", current->address, bytes[i]);
-                    if  (bytes[i] == value) {
-                        tmp = i;
-                        current->value = value;
-                    }
-                }
-
-                if (tmp == -1)
-                {
-                    current->value = -1;
+                if  (ret != value) {
+                    current->value = ret;
                 }
             }
-            else
+            else if (current->type == NODE_TYPE_INT)
             {
-                printf("data of address: %ld with value: %ld\n", current->address, data);
-                current->value = data;
+                int ret = read_int(fd, current->address);
 
-                if (data != value)
-                {
-                    current->value = -1;
+                if  (ret != value) {
+                    current->value = ret;
+                }
+            }
+            else if (current->type == NODE_TYPE_LONG)
+            {
+                long ret = read_long(fd, current->address);
+
+                if  (ret != value) {
+                    current->value = ret;
                 }
             }
         }
-        else
-        {
 
-        }
-
-        prev = current;
         current = current->next;
     }
 
-    ptrace(PTRACE_DETACH, pid, NULL, NULL);
+    close(fd);
 }
 
 int main(int argc, char* argv[])
@@ -154,8 +139,6 @@ int main(int argc, char* argv[])
     BufLine *rwPages = malloc(sizeof(BufLine));
     BufLine *ptr = rwPages;
 
-    int i = 0;
-
     while (!feof(filePtr)) {
         if (fgets(buffer, sizeof(buffer), filePtr)) {
 
@@ -178,7 +161,6 @@ int main(int argc, char* argv[])
 
                 ptr->next = malloc(sizeof(BufLine));
                 ptr = ptr->next;
-                i++;
             }
 
             if (strstr(buffer, "[heap]")) {
@@ -194,83 +176,68 @@ int main(int argc, char* argv[])
 
     printf("OKAY: going to start searching\n");
 
-    while (i && ptr->next != NULL) {
+    while (ptr->next != NULL) {
         long int startNum = ptr->start;
         long int endNum = ptr->end;
 
         printf("Starting: \t%ld\n", startNum);
         printf("Ending: \t%ld\n", endNum);
 
-        int ret = search(pidInt, startNum, endNum, value, list);
+        int ret = search(pidInt, startNum, endNum, value, list, 0);
         if (ret == -1)
         {
-            printf("ERROR: Could not find value %d\n", value);
+            // printf("ERROR: Could not find value %d\n", value);
         }
         else
         {
             printf("Value %d has been found!\n", value);
         }
 
-        i--;
         ptr = ptr->next;
     }
 
+    printf("--------------------------------------\n");
+    filterChangedValues(pidInt, value, list);
     printAllNodes(list);
 
-    printf("All address in the heap with the value %d have been found.\n", value);
-
-    char input[32];
+    char inputBuf[32];
     while (1) {
-        printf("Did the value change? (y/n) \n");
-        scanf("%1s", input);
+        printf("1 to refresh, 2: to change a value\n");
+
+        scanf("%31s", inputBuf);
         while (getchar() != '\n');
 
-        if (input[0] == 'y') {
-            printf("Type the value to search for\n");
-
-            char val[32];
-            scanf("%31s", val);
-            while (getchar() != '\n');
-            value = strtol(val, NULL, 10);
-
+        if (inputBuf[0] == '1')
+        {
+            printf("Refreshing...\n");
             filterChangedValues(pidInt, value, list);
-            printf("TEST!!!!\n");
             printAllNodes(list);
         }
-
-        printf("Do you want to change a value? (y/n)\n");
-        scanf("%1s", input);
-
-        if (input[0] == 'y')
+        else if (inputBuf[0] == '2')
         {
-            printf("Type the index of the address to change the value: \n");
-            scanf("%4s", input);
+            printf("Type the # of the address you want to change.\n");
+
+            scanf("%31s", inputBuf);
             while (getchar() != '\n');
 
-            int num = strtol(input, NULL, 10);
-            num--; //Because user gets index start at #1
+            int index = strtol(inputBuf, NULL, 10);
+            index--;
 
-            printf("Enter the value: \n");
-            scanf("%31s", input);
-            while (getchar() != '\n');
+            Node *ptrList = list;
 
-            value = strtol(input, NULL, 10);
-
-            printf("Value entered: %d\n", value);
-
-            Node *cur = list;
-
-            while (num) {
-                printf("Num is: %d with cur addrress: %ld\n", num, cur->address);
-                cur = cur->next;
-                num--;
+            while (index) {
+                ptrList = ptrList->next;
+                index--;
             }
 
-            printf("Num is: %d with cur addrress: %ld\n", num, cur->address);
+            printf("Type the value you want to insert\n");
+            scanf("%31s", inputBuf);
+            while (getchar() != '\n');
 
-            sleep(1);
-            changeValue(pidInt, cur->address, value);
-            cur->value = value;
+            int value = strtol(inputBuf, NULL, 10);
+
+            int size = ptrList->type == NODE_TYPE_BYTE ? 1 : (ptrList->type == NODE_TYPE_INT ? 4 : 8);
+            changeValue(pidInt, ptrList->address, value, size);
         }
     }
 

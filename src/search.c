@@ -6,7 +6,13 @@
 #include <fcntl.h>
 #include "helper.h"
 
-// Reading different types
+int read_byte(int fd, unsigned long address) {
+    lseek(fd, address, SEEK_SET);
+    int value;
+    read(fd, &value, sizeof(char));
+    return value;
+}
+
 int read_int(int fd, unsigned long address) {
     lseek(fd, address, SEEK_SET);
     int value;
@@ -21,7 +27,7 @@ long read_long(int fd, unsigned long address) {
     return value;
 }
 
-int search(int pid, long int start, long int end, long int value, Node *list)
+int search(int pid, long int start, long int end, long int value, Node *list, int typeSize)
 {
     long data;
     long int address = start;
@@ -36,71 +42,59 @@ int search(int pid, long int start, long int end, long int value, Node *list)
     snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
     int fd = open(mem_path, O_RDONLY);
     if (fd == -1) {
-        perror("Failed to open /proc/<pid>/mem");
+        printf("Failed to open /proc/%d/mem", pid);
         return -1;
     }
 
-    printf("searching long, start: %ld, end: %ld\n", address, end);
+    printf("searching start: 0x%lx, end: 0x%lx\n", address, end);
 
-    while (address <= end) {
-
-        int readInt = read_int(fd, address);
-        long readLong = read_long(fd, address);
-
-        if (readInt == value) {
-            printf("Found integer, addr: %ld\n", address);
-
-            currentNode->address = address;
-            currentNode->value = data;
-            currentNode->next = malloc(sizeof(Node));
-            currentNode = currentNode->next;
-        }
-        else if (readLong == value)
-        {
-            printf("Found long, addr: %ld\n", address);
-
-            currentNode->address = address;
-            currentNode->value = data;
-            currentNode->next = malloc(sizeof(Node));
-            currentNode = currentNode->next;
-        }
-
-        address += sizeof(long);
-    }
-
-/*
-    while (addressPtr <= end)
+    while (address <= end)
     {
-        data = ptrace(PTRACE_PEEKDATA, pid, (void*)addressPtr, NULL);
+        long int data = read_byte(fd, address);
+        if (data == value) {
+            printf("Found byte, \taddr: 0x%lx with value: %ld\n", address, data);
+
+            currentNode->address = address;
+            currentNode->value = data;
+
+            currentNode->type = NODE_TYPE_BYTE;
+
+            currentNode->next = malloc(sizeof(Node));
+            currentNode = currentNode->next;
+        }
+
+        data = read_int(fd, address);
 
         if (data == value) {
+            printf("Found integer, \taddr: 0x%lx with value: %ld\n", address, data);
 
-            // printf("XX %ld\n", data);
-
-            currentNode->address = addressPtr;
+            currentNode->address = address;
             currentNode->value = data;
+
+            currentNode->type = NODE_TYPE_INT;
+
             currentNode->next = malloc(sizeof(Node));
             currentNode = currentNode->next;
         }
 
-        unsigned char *bytes = (unsigned char*)&data; // Cast to byte array
-        for (int i = 0; i < sizeof(long); i++) {
-            if  (bytes[i] == value)
-            {
-                printf("x YY %d %ld %ld\n", i, addressPtr, value);
-                currentNode->address = addressPtr;
-                currentNode->value = bytes[i];
+        data = read_long(fd, address);
 
-                currentNode->isByte = 1;
-                currentNode->bytePos = i;
+        if (data == value) {
+            printf("Found long, \taddr: 0x%lx with value: %ld\n", address, data);
 
-                currentNode->next = malloc(sizeof(Node));
-                currentNode = currentNode->next;
-            }
+            currentNode->address = address;
+            currentNode->value = data;
+
+            currentNode->type = NODE_TYPE_LONG;
+
+            currentNode->next = malloc(sizeof(Node));
+            currentNode = currentNode->next;
         }
 
-        addressPtr += sizeof(long);
-    }*/
+        address++;
+    }
+
+    close(fd);
 
     if (currentNode->next == NULL) {
         return -1;
