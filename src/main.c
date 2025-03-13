@@ -45,6 +45,8 @@ void printAllNodes(Node *list)
                 case NODE_TYPE_LONG:
                     type = "long";
                     break;
+                default:
+                    type= "unkown";
             }
 
             printf("#%d address (%s): \t0x%lx with value: \t%ld\n", i, type, current->address, current->value);
@@ -55,42 +57,36 @@ void printAllNodes(Node *list)
     }
 }
 
-void filterChangedValues(int pid, long int value, Node *list, int active)
+void filterChangedValues(int pidInt, long int value, Node *list, int active)
 {
-    Node *current = list;
-
     char mem_path[64];
-    snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pid);
+    snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pidInt);
     int fd = open(mem_path, O_RDONLY);
     if (fd == -1) {
-        printf("Failed to open /proc/%d/mem", pid);
-        return;
+        printf("Failed to open /proc/%d/mem", pidInt);
     }
+
+    Node *current = list;
+    unsigned char buffer[sizeof(long)];
 
     while (current != NULL)
     {
-        if (current->address != 0)
+        if (current->address != 0 && current->value != -1)
         {
+            long int ret = 0;
+
             if (current->type == NODE_TYPE_BYTE)
-            {
-                int ret = read_byte(fd, current->address);
-
-                if  (ret != value)
-                    current->value = active == 0 ? ret : -1;
-            }
+                ret = read_byte(fd, current->address);
             else if (current->type == NODE_TYPE_INT)
-            {
-                int ret = read_int(fd, current->address);
-
-                if  (ret != value)
-                    current->value = active == 0 ? ret : -1;
-            }
+                ret = read_int(fd, current->address);
             else if (current->type == NODE_TYPE_LONG)
-            {
-                long ret = read_long(fd, current->address);
+                ret = read_long(fd, current->address);
 
-                if  (ret != value)
-                    current->value = active == 0 ? ret : -1;
+            if  (ret != value) {
+                current->value = active == 0 ? ret : -1;
+            }
+            else {
+                current->value = ret;
             }
         }
 
@@ -98,6 +94,8 @@ void filterChangedValues(int pid, long int value, Node *list, int active)
     }
 
     close(fd);
+
+    printf("Filtering done\n");
 }
 
 int main(int argc, char* argv[])
@@ -170,17 +168,32 @@ int main(int argc, char* argv[])
 
     printf("OKAY: going to start searching\n");
 
+    char mem_path[64];
+    snprintf(mem_path, sizeof(mem_path), "/proc/%d/mem", pidInt);
+    int fd = open(mem_path, O_RDONLY);
+    if (fd == -1) {
+        printf("Failed to open /proc/%d/mem", pidInt);
+    }
+
     while (ptr->next != NULL) {
         long int startNum = ptr->start;
         long int endNum = ptr->end;
 
-        printf("Starting: \t%ld\n", startNum);
-        printf("Ending: \t%ld\n", endNum);
+        printf("Starting: \t0x%lx\n", startNum);
+        printf("Ending: \t0x%lx\n", endNum);
 
-        search(pidInt, startNum, endNum, value, list);
+        if ((endNum - startNum) >= 0xFFFFFF)
+        {
+            printf("Skipping...\n");
+            ptr = ptr->next;
+            continue;
+        }
 
+        search(fd, startNum, endNum, value, list);
         ptr = ptr->next;
     }
+
+    close(fd);
 
     printf("--------------------------------------\n");
     filterChangedValues(pidInt, value, list, 0);
@@ -197,6 +210,7 @@ int main(int argc, char* argv[])
         {
             printf("Refreshing...\n");
             filterChangedValues(pidInt, value, list, 0);
+
             sleep(1);
             printAllNodes(list);
         }
@@ -211,6 +225,8 @@ int main(int argc, char* argv[])
 
             printf("Refreshing...\n");
             filterChangedValues(pidInt, newValue, list, 1);
+            value = newValue;
+
             sleep(1);
             printAllNodes(list);
         }
@@ -235,10 +251,10 @@ int main(int argc, char* argv[])
             scanf("%31s", inputBuf);
             while (getchar() != '\n');
 
-            int value = strtol(inputBuf, NULL, 10);
+            int valueVar = strtol(inputBuf, NULL, 10);
 
             int size = ptrList->type == NODE_TYPE_BYTE ? 1 : (ptrList->type == NODE_TYPE_INT ? 4 : 8);
-            changeValue(pidInt, ptrList->address, value, size);
+            changeValue(pidInt, ptrList->address, valueVar, size);
         }
     }
 

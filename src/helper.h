@@ -19,7 +19,7 @@ typedef struct BufLine {
     struct BufLine *next;
 } BufLine;
 
-void search(int pid, long int start, long int end, long int value, Node *list);
+void search(int fd, long int start, long int end, long int value, Node *list);
 
 int read_byte(int fd, unsigned long address);
 
