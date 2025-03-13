@@ -27,7 +27,7 @@ long read_long(int fd, unsigned long address) {
     return value;
 }
 
-int search(int pid, long int start, long int end, long int value, Node *list, int typeSize)
+void search(int pid, long int start, long int end, long int value, Node *list)
 {
     long data;
     long int address = start;
@@ -43,30 +43,31 @@ int search(int pid, long int start, long int end, long int value, Node *list, in
     int fd = open(mem_path, O_RDONLY);
     if (fd == -1) {
         printf("Failed to open /proc/%d/mem", pid);
-        return -1;
     }
 
     printf("searching start: 0x%lx, end: 0x%lx\n", address, end);
 
     while (address <= end)
     {
-        long int data = read_byte(fd, address);
-        if (data == value) {
-            printf("Found byte, \taddr: 0x%lx with value: %ld\n", address, data);
+        // long int data = read_byte(fd, address);
+        // if (data == value) {
+        //     printf("Found byte \taddr: 0x%lx with value: %ld\n", address, data);
+        //
+        //     currentNode->address = address;
+        //     currentNode->value = data;
+        //
+        //     currentNode->type = NODE_TYPE_BYTE;
+        //
+        //     currentNode->next = malloc(sizeof(Node));
+        //     currentNode = currentNode->next;
+        // }
 
-            currentNode->address = address;
-            currentNode->value = data;
-
-            currentNode->type = NODE_TYPE_BYTE;
-
-            currentNode->next = malloc(sizeof(Node));
-            currentNode = currentNode->next;
-        }
+        //data = -1024;
 
         data = read_int(fd, address);
 
         if (data == value) {
-            printf("Found integer, \taddr: 0x%lx with value: %ld\n", address, data);
+            // printf("Found integer \taddr: 0x%lx with value: %ld\n", address, data);
 
             currentNode->address = address;
             currentNode->value = data;
@@ -80,7 +81,7 @@ int search(int pid, long int start, long int end, long int value, Node *list, in
         data = read_long(fd, address);
 
         if (data == value) {
-            printf("Found long, \taddr: 0x%lx with value: %ld\n", address, data);
+            // printf("Found long \taddr: 0x%lx with value: %ld\n", address, data);
 
             currentNode->address = address;
             currentNode->value = data;
@@ -91,14 +92,10 @@ int search(int pid, long int start, long int end, long int value, Node *list, in
             currentNode = currentNode->next;
         }
 
-        address++;
+
+
+        address += sizeof(int);
     }
 
     close(fd);
-
-    if (currentNode->next == NULL) {
-        return -1;
-    }
-
-    return 0;
 }

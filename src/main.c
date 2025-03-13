@@ -30,10 +30,7 @@ void printAllNodes(Node *list)
 
     int i = 1;
     while (current != NULL) {
-        if (current->value == -1 || current->address == 0) {
-        }
-        else
-        {
+        if (current->value != -1 && current->address != 0) {
             char* type = "";
 
             switch (current->type) {
@@ -50,7 +47,7 @@ void printAllNodes(Node *list)
                     break;
             }
 
-            printf("#%d address (%s): \t%ld with value: \t%ld\n", i, type, current->address, current->value);
+            printf("#%d address (%s): \t0x%lx with value: \t%ld\n", i, type, current->address, current->value);
         }
 
         current = current->next;
@@ -58,7 +55,7 @@ void printAllNodes(Node *list)
     }
 }
 
-void filterChangedValues(int pid, long int value, Node *list)
+void filterChangedValues(int pid, long int value, Node *list, int active)
 {
     Node *current = list;
 
@@ -78,25 +75,22 @@ void filterChangedValues(int pid, long int value, Node *list)
             {
                 int ret = read_byte(fd, current->address);
 
-                if  (ret != value) {
-                    current->value = ret;
-                }
+                if  (ret != value)
+                    current->value = active == 0 ? ret : -1;
             }
             else if (current->type == NODE_TYPE_INT)
             {
                 int ret = read_int(fd, current->address);
 
-                if  (ret != value) {
-                    current->value = ret;
-                }
+                if  (ret != value)
+                    current->value = active == 0 ? ret : -1;
             }
             else if (current->type == NODE_TYPE_LONG)
             {
                 long ret = read_long(fd, current->address);
 
-                if  (ret != value) {
-                    current->value = ret;
-                }
+                if  (ret != value)
+                    current->value = active == 0 ? ret : -1;
             }
         }
 
@@ -183,26 +177,18 @@ int main(int argc, char* argv[])
         printf("Starting: \t%ld\n", startNum);
         printf("Ending: \t%ld\n", endNum);
 
-        int ret = search(pidInt, startNum, endNum, value, list, 0);
-        if (ret == -1)
-        {
-            // printf("ERROR: Could not find value %d\n", value);
-        }
-        else
-        {
-            printf("Value %d has been found!\n", value);
-        }
+        search(pidInt, startNum, endNum, value, list);
 
         ptr = ptr->next;
     }
 
     printf("--------------------------------------\n");
-    filterChangedValues(pidInt, value, list);
+    filterChangedValues(pidInt, value, list, 0);
     printAllNodes(list);
 
     char inputBuf[32];
     while (1) {
-        printf("1 to refresh, 2: to change a value\n");
+        printf("1 to refresh, 2 refresh with new value, 3: to change a value\n");
 
         scanf("%31s", inputBuf);
         while (getchar() != '\n');
@@ -210,10 +196,25 @@ int main(int argc, char* argv[])
         if (inputBuf[0] == '1')
         {
             printf("Refreshing...\n");
-            filterChangedValues(pidInt, value, list);
+            filterChangedValues(pidInt, value, list, 0);
+            sleep(1);
             printAllNodes(list);
         }
         else if (inputBuf[0] == '2')
+        {
+            printf("Type the new value in\n");
+
+            char val[32];
+            scanf("%31s", val);
+            while (getchar() != '\n');
+            int newValue = strtol(val, NULL, 10);
+
+            printf("Refreshing...\n");
+            filterChangedValues(pidInt, newValue, list, 1);
+            sleep(1);
+            printAllNodes(list);
+        }
+        else if (inputBuf[0] == '3')
         {
             printf("Type the # of the address you want to change.\n");
 
