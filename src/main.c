@@ -76,11 +76,12 @@ void filterChangedValues(int pidInt, long int value, Node *list, int active)
             long int ret = 0;
 
             if (current->type == NODE_TYPE_BYTE)
-                ret = read_byte(fd, current->address);
-            else if (current->type == NODE_TYPE_INT)
-                ret = read_int(fd, current->address);
+                ret = -1; //read_byte(fd, current->address);
+            else if (current->type == NODE_TYPE_INT) {
+                pread(fd, &ret, sizeof(int), current->address);
+            }
             else if (current->type == NODE_TYPE_LONG)
-                ret = read_long(fd, current->address);
+                ret = -1; //read_long(fd, current->address);
 
             if  (ret != value) {
                 current->value = active == 0 ? ret : -1;
@@ -182,12 +183,12 @@ int main(int argc, char* argv[])
         printf("Starting: \t0x%lx\n", startNum);
         printf("Ending: \t0x%lx\n", endNum);
 
-        if ((endNum - startNum) >= 0xFFFFFF)
-        {
-            printf("Skipping...\n");
-            ptr = ptr->next;
-            continue;
-        }
+        // if ((endNum - startNum) >= 0xFFFFFF)
+        // {
+        //     printf("Skipping...\n");
+        //     ptr = ptr->next;
+        //     continue;
+        // }
 
         search(fd, startNum, endNum, value, list);
         ptr = ptr->next;

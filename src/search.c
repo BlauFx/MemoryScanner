@@ -6,16 +6,9 @@
 #include <fcntl.h>
 #include "helper.h"
 
-int read_int(int fd, unsigned long address) {
-    int value;
-    pread(fd, &value, sizeof(int), address);
-    return value;
-}
-
-void search(int fd, long int start, long int end, long int value, Node *list)
+void search(int fd, long int addr, long int addrEnd, long int value, Node *list)
 {
-    long data;
-    long int address = start;
+    int data;
 
     Node *currentNode = list;
 
@@ -23,23 +16,23 @@ void search(int fd, long int start, long int end, long int value, Node *list)
         currentNode = currentNode->next;
     }
 
-    printf("searching start: 0x%lx, end: 0x%lx\n", address, end);
+    printf("searching start: 0x%lx, end: 0x%lx\n", addr, addrEnd);
 
-    while (address <= end)
+    while (addr <= addrEnd)
     {
-        data = read_int(fd, address);
+        data = -1;
+        pread(fd, &data, sizeof(int), addr);
 
-        if (data == value) {
-            // printf("Found integer \taddr: 0x%lx with value: %ld\n", address, data);
+        if (__builtin_expect(!!(data == value), 0)) {
             currentNode->type = NODE_TYPE_INT;
 
-            currentNode->address = address;
+            currentNode->address = addr;
             currentNode->value = data;
 
             currentNode->next = malloc(sizeof(Node));
             currentNode = currentNode->next;
         }
 
-        address += sizeof(int);
+        addr += sizeof(int);
     }
 }
