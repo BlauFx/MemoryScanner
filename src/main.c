@@ -1,5 +1,4 @@
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -30,14 +29,27 @@ void printAllNodes(Node *list)
     while (current != NULL) {
         if (current->value == -1 || current->address == 0) {
         }
-        else {
-            printf("#%d address: %ld with value %ld\n", i, current->address, current->value);
+        else
+        {
+            if (current->isByte == 1)
+            {
+                unsigned char *bytes = (unsigned char*)&current->value; // Cast to byte array
+                for (int j = 0; j < sizeof(long); j++) {
+                    if (bytes[j] != 0) {
+                        // printf("#%d data of address byte %i: %ld with value: %d\n", i, j, current->address, bytes[j]);
+                    }
+                }
+            }
+            else
+            {
+                printf("#%d address: %ld with value (long): %ld\n", i, current->address, current->value);
+            }
         }
+
         current = current->next;
         i++;
     }
 }
-
 
 void filterChangedValues(int pid, long int value, Node *list)
 {
@@ -67,12 +79,34 @@ void filterChangedValues(int pid, long int value, Node *list)
         if (current->address != 0)
         {
             long data = ptrace(PTRACE_PEEKDATA, pid, current->address, NULL);
-            printf("data of address: %ld with value: %ld\n", current->address, data);
-            current->value = data;
 
-            if (data != value)
+            if (current->isByte > 0)
             {
-                current->value = -1;
+                int tmp = -1;
+
+                unsigned char *bytes = (unsigned char*)&data; // Cast to byte array
+                for (int i = 0; i < sizeof(long); i++) {
+                    // printf("data of address bytes: %ld with value: %d\n", current->address, bytes[i]);
+                    if  (bytes[i] == value) {
+                        tmp = i;
+                        current->value = value;
+                    }
+                }
+
+                if (tmp == -1)
+                {
+                    current->value = -1;
+                }
+            }
+            else
+            {
+                printf("data of address: %ld with value: %ld\n", current->address, data);
+                current->value = data;
+
+                if (data != value)
+                {
+                    current->value = -1;
+                }
             }
         }
         else
@@ -87,43 +121,54 @@ void filterChangedValues(int pid, long int value, Node *list)
     ptrace(PTRACE_DETACH, pid, NULL, NULL);
 }
 
-int search(int pid, long int start, long int end, long int value, Node *list)
-{
-    printf("Searching for %ld in pid: %d\n", value, pid);
-
-    //printf("%ld; %ld\n", start, end);
+void attachORdetach(int pid, int attach) {
 
     if (kill(pid, 0) != 0) {
         kill(pid, SIGCONT);
         sleep(10);
     }
 
-    if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) == 0)
-    {
-        printf("PTRACE_ATTACH success\n");
+    if (attach) {
+        if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) == 0)
+        {
+            printf("PTRACE_ATTACH success\n");
+        }
+        else
+        {
+            printf("ERROR: ATTACHING!\n"); //TODO: Check internally for root permissions?
+        }
     }
-    else
-    {
-        printf("ERROR: ATTACHING!\n"); //TODO: Check internally for root permissions?
-        return -1;
+    else {
+        if (ptrace(PTRACE_DETACH, pid, NULL, NULL) == 0)
+        {
+            printf("PTRACE_DETACH success\n");
+        }
+        else
+        {
+            printf("ERROR: DETACHING!\n"); //TODO: Check internally for root permissions?
+        }
     }
 
+}
+
+int search(int pid, long int start, long int end, long int value, Node *list)
+{
     long data;
     long int addressPtr = start;
-    int found = 0;
 
     Node *currentNode = list;
+
+    while (currentNode->next != NULL) {
+        currentNode = currentNode->next;
+    }
 
     while (addressPtr <= end)
     {
         data = ptrace(PTRACE_PEEKDATA, pid, (void*)addressPtr, NULL);
-        //printf("Current address: %ld\t", AddressPtr);
-
-        //printf("AA %ld\n", data);
 
         if (data == value) {
-            //printf("XX %ld\n", data);
-            found++;
+
+            // printf("XX %ld\n", data);
 
             currentNode->address = addressPtr;
             currentNode->value = data;
@@ -131,12 +176,26 @@ int search(int pid, long int start, long int end, long int value, Node *list)
             currentNode = currentNode->next;
         }
 
+        unsigned char *bytes = (unsigned char*)&data; // Cast to byte array
+        for (int i = 0; i < sizeof(long); i++) {
+            if  (bytes[i] == value)
+            {
+                printf("x YY %d %ld %ld\n", i, addressPtr, value);
+                currentNode->address = addressPtr;
+                currentNode->value = bytes[i];
+
+                currentNode->isByte = 1;
+                currentNode->bytePos = i;
+
+                currentNode->next = malloc(sizeof(Node));
+                currentNode = currentNode->next;
+            }
+        }
+
         addressPtr += sizeof(long);
     }
 
-    ptrace(PTRACE_DETACH, pid, NULL, NULL);
-
-    if (found == 0) {
+    if (currentNode->next == NULL) {
         return -1;
     }
 
@@ -145,6 +204,18 @@ int search(int pid, long int start, long int end, long int value, Node *list)
 
 int main(int argc, char* argv[])
 {
+    if (argc == 1) {
+        printf("Enter as an argument (for example) the .data section virtual address\n");
+        printf("To ge the VMA: \"objdump -h /your/binaryfile | grep \" .data \" | awk '{print $4}\n");
+        exit(0);
+    }
+
+    char *vma = argv[1];
+    long int VMAInt = strtol(vma, NULL, 16);
+
+    printf("VMA: %ld \n", VMAInt);
+
+
     printf("Type the pid of the program\n");
 
     char pid[8];
@@ -173,41 +244,94 @@ int main(int argc, char* argv[])
 
     char buffer[512];
 
+    BufLine *rwPages = malloc(sizeof(BufLine));
+    BufLine *ptr = rwPages;
+
+    int i = 0;
+
     while (!feof(filePtr)) {
         if (fgets(buffer, sizeof(buffer), filePtr)) {
+
+            char addr[32], perms[8];
+            int fields = sscanf(buffer, "%31s %7s", addr, perms);
+
+            // Check if the entry has 5 fields (meaning no file mapping) and is "rw-p"
+            if (fields == 2 && strcmp(perms, "rw-p") == 0) {
+                // printf("%s\n", addr);
+
+                char *start = strtok(addr, "-");
+                char *end = strtok(NULL, "-");
+
+                long int startInt = strtol(start, NULL, 16);
+                long int endInt = strtol(end, NULL, 16);
+
+                if (startInt >= VMAInt)
+                {
+                    printf("startINT: %ld\n", startInt);
+                    strcpy(ptr->buffer, addr);
+                    ptr->start = startInt;
+                    ptr->end = endInt;
+
+                    ptr->next = malloc(sizeof(BufLine));
+                    ptr = ptr->next;
+                    i++;
+                }
+            }
+
             if (strstr(buffer, "[heap]")) {
-                printf("FOUND IT!\n");
+                printf("FOUND [HEAP]\n");
                 fclose(filePtr);
                 break;
             }
         }
     }
 
-    printf("Parsing: %s", buffer);
-
-    char* token = strtok(buffer, " ");
-    printf("%s\n", token);
-
-    char *start = strtok(token, "-");
-    printf("Starting address: \t%s\n", start);
-
-    char *end = strtok(NULL, "-");
-    printf("Ending address: \t%s\n", end);
-
-    long int startNum = 0x0; //strtol(start, NULL, 16);
-    long int endNum = strtol(end, NULL, 16);
-
     Node *list = malloc(sizeof(Node));
+    ptr = rwPages;
 
-    int ret = search(pidInt, startNum, endNum, value, list);
+    while (ptr->next != NULL)
+    {
+        printf("a Starting: \t%ld\n", ptr->start);
+        printf("a Ending: \t%ld\n", ptr->end);
 
-    if (ret == -1) {
-        printf("ERROR: Could not find value %d\n", value);
+        if (ptr->next->next->next->next == NULL) {
+            ptr->next->next->next = NULL;
+            break;
+        }
+
+        ptr = ptr->next;
     }
-    else {
-        printf("Value %d has been found!\n", value);
+
+    // return 0;
+
+    attachORdetach(pidInt, 1);
+
+    printf("OKAY: going to start searching\n");
+
+    while (i && ptr->next != NULL) {
+        long int startNum = ptr->start;
+        long int endNum = 0x14147f842; //ptr->end;
+
+        printf("Starting: \t%ld\n", startNum);
+        printf("Ending: \t%ld\n", endNum);
+
+        int ret = search(pidInt, startNum, endNum, value, list);
+        if (ret == -1)
+        {
+            printf("ERROR: Could not find value %d\n", value);
+        }
+        else
+        {
+            printf("Value %d has been found!\n", value);
+        }
+
+        break;
+
+        i--;
+        ptr = ptr->next;
     }
 
+    attachORdetach(pidInt, 0);
     printAllNodes(list);
 
     printf("All address in the heap with the value %d have been found.\n", value);
@@ -227,6 +351,7 @@ int main(int argc, char* argv[])
             value = strtol(val, NULL, 10);
 
             filterChangedValues(pidInt, value, list);
+            printf("TEST!!!!\n");
             printAllNodes(list);
         }
 
