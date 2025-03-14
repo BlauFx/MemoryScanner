@@ -183,13 +183,6 @@ int main(int argc, char* argv[])
         printf("Starting: \t0x%lx\n", startNum);
         printf("Ending: \t0x%lx\n", endNum);
 
-        // if ((endNum - startNum) >= 0xFFFFFF)
-        // {
-        //     printf("Skipping...\n");
-        //     ptr = ptr->next;
-        //     continue;
-        // }
-
         search(fd, startNum, endNum, value, list);
         ptr = ptr->next;
     }

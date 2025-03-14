@@ -6,10 +6,10 @@
 #include <fcntl.h>
 #include "helper.h"
 
+#define BUFFER_SIZE sizeof(int) * 1024
+
 void search(int fd, long int addr, long int addrEnd, long int value, Node *list)
 {
-    int data;
-
     Node *currentNode = list;
 
     while (currentNode->next != NULL) {
@@ -18,21 +18,34 @@ void search(int fd, long int addr, long int addrEnd, long int value, Node *list)
 
     printf("searching start: 0x%lx, end: 0x%lx\n", addr, addrEnd);
 
-    while (addr <= addrEnd)
+    int *buffer = malloc(BUFFER_SIZE);
+
+    long int read = 0;
+    long int offset = addr;
+
+    while (offset <= addrEnd)
     {
-        data = -1;
-        pread(fd, &data, sizeof(int), addr);
+        read = pread(fd, buffer, BUFFER_SIZE, offset);
 
-        if (__builtin_expect(!!(data == value), 0)) {
-            currentNode->type = NODE_TYPE_INT;
+        if (read <= 0) //ERROR or EOL reached
+            break;
 
-            currentNode->address = addr;
-            currentNode->value = data;
+        int amount = read / sizeof(int);
 
-            currentNode->next = malloc(sizeof(Node));
-            currentNode = currentNode->next;
+        for (int i = 0; i < amount; i++)
+        {
+            if (buffer[i] == value)
+            {
+                currentNode->type = NODE_TYPE_INT;
+
+                currentNode->address = offset + (i * sizeof(int));
+                currentNode->value = buffer[i];
+
+                currentNode->next = malloc(sizeof(Node));
+                currentNode = currentNode->next;
+            }
         }
 
-        addr += sizeof(int);
+        offset += read;
     }
 }
