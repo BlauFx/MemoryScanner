@@ -27,7 +27,8 @@ void search(int fd, long int addr, long int addrEnd, long int value, Node *list)
     {
         read = pread(fd, buffer, BUFFER_SIZE, offset);
 
-        if (read <= 0) //ERROR or EOL reached
+        //ERROR or EOL reached
+        if (read <= 0)
             break;
 
         int amount = read / sizeof(int);

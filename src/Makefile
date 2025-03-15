@@ -1,2 +1,2 @@
 all:
-	cc *.c *.h -o main
+	cc *.c *.h -o memoryscanner

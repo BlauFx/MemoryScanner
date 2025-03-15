@@ -189,6 +189,15 @@ int main(int argc, char* argv[])
 
     close(fd);
 
+    while (rwPages->next != NULL)
+    {
+        ptr = rwPages;
+        rwPages = rwPages->next;
+        free(ptr);
+    }
+
+    ptr = NULL;
+
     printf("--------------------------------------\n");
     filterChangedValues(pidInt, value, list, 0);
     printAllNodes(list);
